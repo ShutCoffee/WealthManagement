@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { getAssetTransactions, calculateAssetProfit, deleteTransaction } from '@/app/actions';
+import { getAssetTransactions, calculateAssetProfit, deleteTransaction, getDividendsWithPayouts, calculateDividendMetrics, type DividendWithPayout } from '@/app/actions';
 import { AddTransactionDialog } from '@/components/add-transaction-dialog';
 import { DividendsSection } from '@/components/dividends-section';
 import { Trash2, TrendingUp, TrendingDown } from 'lucide-react';
@@ -50,32 +50,57 @@ export function AssetDetailDialog({
   const [internalOpen, setInternalOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [profitData, setProfitData] = useState<ProfitData | null>(null);
+  const [dividends, setDividends] = useState<DividendWithPayout[]>([]);
+  const [dividendMetrics, setDividendMetrics] = useState({
+    totalDividends: 0,
+    ytdDividends: 0,
+    dividendYield: 0,
+    count: 0,
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   // Use external control if provided, otherwise use internal state
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
   const setOpen = externalOnOpenChange !== undefined ? externalOnOpenChange : setInternalOpen;
 
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    
+    // Load transactions and profit for all assets
+    const promises: Promise<any>[] = [
+      getAssetTransactions(assetId),
+      calculateAssetProfit(assetId),
+    ];
+    
+    // Load dividends only if asset has a symbol
+    if (assetSymbol) {
+      promises.push(getDividendsWithPayouts(assetId));
+      promises.push(calculateDividendMetrics(assetId));
+    }
+    
+    const results = await Promise.all(promises);
+    
+    setTransactions(results[0]);
+    if (!('error' in results[1])) {
+      setProfitData(results[1]);
+    }
+    
+    // Set dividend data if we fetched it
+    if (assetSymbol && results.length > 2) {
+      setDividends(results[2]);
+      setDividendMetrics(results[3]);
+    }
+    
+    setIsLoading(false);
+  }, [assetId, assetSymbol]);
+
   useEffect(() => {
     if (open) {
       loadData();
     }
-  }, [open, assetId]);
+  }, [open, loadData]);
 
-  async function loadData() {
-    setIsLoading(true);
-    const [txns, profit] = await Promise.all([
-      getAssetTransactions(assetId),
-      calculateAssetProfit(assetId),
-    ]);
-    setTransactions(txns);
-    if (!('error' in profit)) {
-      setProfitData(profit);
-    }
-    setIsLoading(false);
-  }
-
-  async function handleDeleteTransaction(transactionId: number) {
+  const handleDeleteTransaction = useCallback(async (transactionId: number) => {
     if (!confirm('Are you sure you want to delete this transaction?')) {
       return;
     }
@@ -86,7 +111,7 @@ export function AssetDetailDialog({
     } else if (result.error) {
       alert(result.error);
     }
-  }
+  }, [loadData]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -111,6 +136,30 @@ export function AssetDetailDialog({
             <div className="mt-4">
               {/* Overview Tab */}
               <TabsContent value="overview" className="space-y-6">
+                {/* Show current price if no transactions */}
+                {profitData && profitData.totalShares === 0 && (
+                  <div className="rounded-lg border bg-card p-4">
+                    <h3 className="font-semibold mb-3">Asset Information</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-muted-foreground">Symbol</div>
+                        <div className="font-medium">{assetSymbol || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Current Price</div>
+                        <div className="font-medium">{currency} {profitData.currentPrice.toFixed(2)}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-muted-foreground">Shares Owned</div>
+                        <div className="font-medium">0</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 p-3 bg-muted/30 rounded text-sm text-muted-foreground text-center">
+                      No transactions yet. Add your first transaction to track performance.
+                    </div>
+                  </div>
+                )}
+                
                 {/* Profit Summary */}
                 {profitData && profitData.totalShares > 0 && (
                   <div className="rounded-lg border bg-card p-4">
@@ -146,14 +195,16 @@ export function AssetDetailDialog({
                           {profitData.realizedGain >= 0 ? '+' : ''}{currency} {profitData.realizedGain.toFixed(2)}
                         </div>
                       </div>
-                      <div className="col-span-2">
-                        <div className="text-muted-foreground">Dividend Income</div>
-                        <div className={`font-medium ${(profitData.dividendIncome ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'}`}>
-                          {(profitData.dividendIncome ?? 0) > 0 ? '+' : ''}{currency} {(profitData.dividendIncome ?? 0).toFixed(2)}
+                      {assetSymbol && (
+                        <div className="col-span-2">
+                          <div className="text-muted-foreground">Dividend Income</div>
+                          <div className={`font-medium ${(profitData.dividendIncome ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'}`}>
+                            {(profitData.dividendIncome ?? 0) > 0 ? '+' : ''}{currency} {(profitData.dividendIncome ?? 0).toFixed(2)}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <div className="col-span-2 pt-2 border-t">
-                        <div className="text-muted-foreground">Total Return (incl. dividends)</div>
+                        <div className="text-muted-foreground">Total Return{assetSymbol ? ' (incl. dividends)' : ''}</div>
                         <div className={`font-semibold text-lg flex items-center gap-1 ${profitData.totalGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'}`}>
                           {profitData.totalGain >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                           {profitData.totalGain >= 0 ? '+' : ''}{currency} {profitData.totalGain.toFixed(2)}
@@ -252,6 +303,9 @@ export function AssetDetailDialog({
                     assetId={assetId} 
                     assetSymbol={assetSymbol}
                     currency={currency}
+                    dividends={dividends}
+                    metrics={dividendMetrics}
+                    onDividendsRefreshed={loadData}
                   />
                 )}
               </TabsContent>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 import { refreshStockPrices } from '@/app/actions';
@@ -8,7 +8,7 @@ import { refreshStockPrices } from '@/app/actions';
 export function RefreshPricesButton() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  async function handleRefresh() {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
       await refreshStockPrices();
@@ -17,7 +17,7 @@ export function RefreshPricesButton() {
     } finally {
       setIsRefreshing(false);
     }
-  }
+  }, []);
 
   return (
     <Button
@@ -30,4 +30,3 @@ export function RefreshPricesButton() {
     </Button>
   );
 }
-

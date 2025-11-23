@@ -1,0 +1,23 @@
+export function calculateNextExecutionDate(currentDate: Date, frequency: string): Date {
+  const next = new Date(currentDate)
+  
+  switch (frequency) {
+    case 'daily':
+      next.setDate(next.getDate() + 1)
+      break
+    case 'weekly':
+      next.setDate(next.getDate() + 7)
+      break
+    case 'monthly':
+      next.setMonth(next.getMonth() + 1)
+      break
+    case 'yearly':
+      next.setFullYear(next.getFullYear() + 1)
+      break
+    default:
+      throw new Error('Invalid frequency')
+  }
+  
+  return next
+}
+

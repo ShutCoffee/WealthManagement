@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { calculateAssetProfit, deleteAsset } from '@/app/actions';
+import { useState, useCallback, memo } from 'react';
+import { deleteAsset } from '@/app/actions';
 import { AssetDetailDialog } from '@/components/asset-detail-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,38 +15,18 @@ import { TrendingUp, TrendingDown, MoreVertical, Eye, Trash2 } from 'lucide-reac
 import type { Asset } from '@/db/schema';
 
 interface AssetCardProps {
-  asset: Asset;
+  asset: Asset & {
+    profitData?: {
+      unrealizedGain: number;
+      gainPercentage: number;
+    };
+  };
 }
 
-export function AssetCard({ asset }: AssetCardProps) {
-  const [profitData, setProfitData] = useState<{
-    unrealizedGain: number;
-    gainPercentage: number;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+function AssetCardComponent({ asset }: AssetCardProps) {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
 
-  useEffect(() => {
-    // Only fetch profit data for investment assets with symbols (stocks)
-    if (asset.type === 'investment' && asset.symbol) {
-      loadProfitData();
-    } else {
-      setIsLoading(false);
-    }
-  }, [asset.id, asset.type, asset.symbol]);
-
-  async function loadProfitData() {
-    const result = await calculateAssetProfit(asset.id);
-    if (!('error' in result)) {
-      setProfitData({
-        unrealizedGain: result.unrealizedGain,
-        gainPercentage: result.gainPercentage,
-      });
-    }
-    setIsLoading(false);
-  }
-
-  async function handleDelete() {
+  const handleDelete = useCallback(async () => {
     if (!confirm(`Are you sure you want to delete "${asset.name}"? This action cannot be undone.`)) {
       return;
     }
@@ -55,9 +35,13 @@ export function AssetCard({ asset }: AssetCardProps) {
     if (result.error) {
       alert(result.error);
     }
-  }
+  }, [asset.id, asset.name]);
 
-  const showProfit = asset.type === 'investment' && asset.symbol && !isLoading && profitData;
+  const handleShowDetails = useCallback(() => {
+    setShowDetailDialog(true);
+  }, []);
+
+  const showProfit = asset.type === 'investment' && asset.symbol && asset.profitData;
 
   return (
     <div className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
@@ -82,20 +66,21 @@ export function AssetCard({ asset }: AssetCardProps) {
           <div className="font-semibold">
             {asset.currency} {parseFloat(asset.value).toFixed(2)}
           </div>
-          {showProfit && profitData && (
+          {/* Show profit data when available */}
+          {showProfit && asset.profitData && (
             <div
               className={`text-sm font-medium flex items-center justify-end gap-1 ${
-                profitData.unrealizedGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'
+                asset.profitData.unrealizedGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'
               }`}
             >
-              {profitData.unrealizedGain >= 0 ? (
+              {asset.profitData.unrealizedGain >= 0 ? (
                 <TrendingUp className="h-3 w-3" />
               ) : (
                 <TrendingDown className="h-3 w-3" />
               )}
-              {profitData.unrealizedGain >= 0 ? '+' : ''}
-              {asset.currency} {Math.abs(profitData.unrealizedGain).toFixed(2)}
-              <span className="text-xs">({profitData.gainPercentage.toFixed(2)}%)</span>
+              {asset.profitData.unrealizedGain >= 0 ? '+' : ''}
+              {asset.currency} {Math.abs(asset.profitData.unrealizedGain).toFixed(2)}
+              <span className="text-xs">({asset.profitData.gainPercentage.toFixed(2)}%)</span>
             </div>
           )}
         </div>
@@ -109,7 +94,7 @@ export function AssetCard({ asset }: AssetCardProps) {
           <DropdownMenuContent align="end">
             {asset.type === 'investment' && asset.symbol && (
               <>
-                <DropdownMenuItem onClick={() => setShowDetailDialog(true)}>
+                <DropdownMenuItem onClick={handleShowDetails}>
                   <Eye className="h-4 w-4" />
                   View Details
                 </DropdownMenuItem>
@@ -141,3 +126,4 @@ export function AssetCard({ asset }: AssetCardProps) {
   );
 }
 
+export const AssetCard = memo(AssetCardComponent);

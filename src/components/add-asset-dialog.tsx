@@ -1,7 +1,7 @@
-'use client';
+'use client'
 
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useRef, useCallback } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -9,117 +9,84 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { createAsset, createAssetWithPrice, searchStock } from '@/app/actions';
-import { PlusCircle, TrendingUp, PieChart, Wallet, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+} from '@/components/ui/select'
+import { createAsset, createAssetWithPrice } from '@/app/actions'
+import { PlusCircle, TrendingUp, PieChart, Wallet, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { StockSearch, type StockSearchResult } from '@/components/stock-search'
+import { StockForm } from '@/components/stock-form'
 
-type AssetMode = 'choose' | 'stock' | 'etf' | 'manual';
-
-interface StockSearchResult {
-  symbol: string;
-  name: string;
-  type: string;
-  region: string;
-  currency: string;
-}
+type AssetMode = 'choose' | 'stock' | 'etf' | 'manual'
 
 export function AddAssetDialog() {
-  const [open, setOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState<AssetMode>('choose');
-  const formRef = useRef<HTMLFormElement>(null);
+  const [open, setOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [mode, setMode] = useState<AssetMode>('choose')
+  const formRef = useRef<HTMLFormElement>(null)
+  const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null)
 
-  // Stock/ETF search state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<StockSearchResult[]>([]);
-  const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null);
-
-  const selectedStockType = selectedStock?.type || 'Stock';
-  const isEtfMode = mode === 'etf';
-
-  function handleOpenChange(isOpen: boolean) {
-    setOpen(isOpen);
+  const handleOpenChange = useCallback((isOpen: boolean) => {
+    setOpen(isOpen)
     if (!isOpen) {
-      // Reset all state when dialog closes
-      setMode('choose');
-      setSearchQuery('');
-      setSearchResults([]);
-      setSelectedStock(null);
-      formRef.current?.reset();
+      setMode('choose')
+      setSelectedStock(null)
+      formRef.current?.reset()
     }
-  }
+  }, [])
 
-  // Real-time search with debounce
-  useEffect(() => {
-    if (!searchQuery.trim() || (mode !== 'stock' && mode !== 'etf') || selectedStock) {
-      setSearchResults([]);
-      return;
-    }
+  const handleSelectStock = useCallback((stock: StockSearchResult) => {
+    setSelectedStock(stock)
+  }, [])
 
-    const delayDebounce = setTimeout(async () => {
-      setIsSearching(true);
-      const result = await searchStock(searchQuery);
-      setIsSearching(false);
+  const handleSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
 
-      if (result.success && result.results) {
-        setSearchResults(result.results);
-      } else {
-        setSearchResults([]);
-      }
-    }, 500); // 500ms debounce
-
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery, mode, selectedStock]);
-
-  function handleSelectStock(stock: StockSearchResult) {
-    setSelectedStock(stock);
-    setSearchResults([]);
-    setSearchQuery('');
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setIsLoading(true);
-
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(e.currentTarget)
     
-    let result;
+    let result
     
     if ((mode === 'stock' || mode === 'etf') && selectedStock) {
-      // For stock/ETF mode, use createAssetWithPrice to fetch price immediately
-      formData.set('name', selectedStock.name);
-      formData.set('symbol', selectedStock.symbol);
-      formData.set('currency', selectedStock.currency || 'USD');
-      formData.set('type', 'investment');
-      formData.set('category', isEtfMode ? 'etfs' : 'stocks');
-      result = await createAssetWithPrice(formData);
+      formData.set('name', selectedStock.name)
+      formData.set('symbol', selectedStock.symbol)
+      formData.set('currency', selectedStock.currency || 'USD')
+      formData.set('type', 'investment')
+      formData.set('category', mode === 'etf' ? 'etfs' : 'stocks')
+      result = await createAssetWithPrice(formData)
     } else {
-      // For manual mode, use regular createAsset
-      result = await createAsset(formData);
+      result = await createAsset(formData)
     }
 
-    setIsLoading(false);
+    setIsLoading(false)
 
     if (result.success) {
-      setOpen(false);
-      setMode('choose');
-      setSelectedStock(null);
-      setSearchQuery('');
-      setSearchResults([]);
-      formRef.current?.reset();
+      setOpen(false)
+      setMode('choose')
+      setSelectedStock(null)
+      formRef.current?.reset()
     }
-  }
+  }, [mode, selectedStock])
+
+  const handleSetMode = useCallback((newMode: AssetMode) => {
+    setMode(newMode)
+  }, [])
+
+  const handleBackToChoose = useCallback(() => {
+    setMode('choose')
+  }, [])
+
+  const handleClearStock = useCallback(() => {
+    setSelectedStock(null)
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -143,7 +110,7 @@ export function AddAssetDialog() {
             </DialogHeader>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-6">
               <button
-                onClick={() => setMode('stock')}
+                onClick={() => handleSetMode('stock')}
                 className="group flex flex-col items-center justify-center p-6 rounded-xl border hover:border-primary hover:bg-primary/5 transition-all duration-200"
               >
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
@@ -156,7 +123,7 @@ export function AddAssetDialog() {
               </button>
 
               <button
-                onClick={() => setMode('etf')}
+                onClick={() => handleSetMode('etf')}
                 className="group flex flex-col items-center justify-center p-6 rounded-xl border hover:border-primary hover:bg-primary/5 transition-all duration-200"
               >
                 <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
@@ -169,7 +136,7 @@ export function AddAssetDialog() {
               </button>
 
               <button
-                onClick={() => setMode('manual')}
+                onClick={() => handleSetMode('manual')}
                 className="group flex flex-col items-center justify-center p-6 rounded-xl border hover:border-primary hover:bg-primary/5 transition-all duration-200"
               >
                 <div className="h-12 w-12 rounded-full bg-orange-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
@@ -184,304 +151,32 @@ export function AddAssetDialog() {
           </>
         )}
 
-        {mode === 'stock' && (
+        {(mode === 'stock' || mode === 'etf') && (
           <>
             <DialogHeader>
-              <DialogTitle>Add Stock</DialogTitle>
+              <DialogTitle>Add {mode === 'etf' ? 'ETF' : 'Stock'}</DialogTitle>
               <DialogDescription>
-                Search for a stock ticker and enter the number of shares you own.
+                Search for a {mode === 'etf' ? 'ETF' : 'stock'} ticker and enter the number of shares you own.
               </DialogDescription>
             </DialogHeader>
 
             {!selectedStock ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="stock-search">Search Stock Ticker</Label>
-                  <div className="relative">
-                    <Input
-                      id="stock-search"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="e.g., AAPL, MSFT, Tesla"
-                      className="pr-10"
-                    />
-                    {isSearching && (
-                      <div className="absolute right-3 top-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {searchResults.length > 0 && (
-                  <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
-                    <Label className="text-xs text-muted-foreground font-normal uppercase tracking-wider">Search Results</Label>
-                    <div className="space-y-2">
-                      {searchResults.map((stock) => (
-                        <button
-                          key={stock.symbol}
-                          type="button"
-                          onClick={() => handleSelectStock(stock)}
-                          className="w-full p-3 text-left rounded-lg border hover:border-primary hover:bg-accent/50 transition-colors group"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold group-hover:text-primary transition-colors">{stock.symbol}</div>
-                            <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{stock.currency}</div>
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-0.5">{stock.name}</div>
-                          <div className="text-xs text-muted-foreground mt-1 opacity-70">
-                            {stock.type || 'Stock'} • {stock.region}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {searchQuery && !isSearching && searchResults.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
-                    <p className="text-sm">No results found</p>
-                    <p className="text-xs mt-1">Try searching for a different ticker symbol</p>
-                  </div>
-                )}
-
-                <div className="flex justify-between gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setMode('choose')}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleOpenChange(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+              <StockSearch
+                placeholder={mode === 'etf' ? 'e.g., SPY, QQQ, VTI' : 'e.g., AAPL, MSFT, Tesla'}
+                onSelect={handleSelectStock}
+                onBack={handleBackToChoose}
+                onCancel={() => handleOpenChange(false)}
+              />
             ) : (
-              <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
-                <div className="rounded-lg border bg-muted/30 p-4 flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="font-bold text-xl">{selectedStock.symbol}</div>
-                    <div className="text-sm font-medium">{selectedStock.name}</div>
-                    <div className="text-xs text-muted-foreground flex gap-2 items-center mt-1">
-                      <span className="bg-background border px-1.5 py-0.5 rounded text-[10px] uppercase">{selectedStockType}</span>
-                      <span>{selectedStock.region}</span>
-                      <span>{selectedStock.currency}</span>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => setSelectedStock(null)}
-                  >
-                    Change
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="stock-quantity">Number of Shares</Label>
-                  <Input
-                    id="stock-quantity"
-                    name="quantity"
-                    type="number"
-                    step="0.0001"
-                    placeholder="e.g., 10"
-                    required
-                    autoFocus
-                    className="text-lg"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="stock-notes">Notes (Optional)</Label>
-                  <Input
-                    id="stock-notes"
-                    name="description"
-                    placeholder="e.g., Brokerage account"
-                  />
-                </div>
-
-                <div className="flex justify-between gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setSelectedStock(null)}
-                  >
-                    Back
-                  </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleOpenChange(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isLoading}>
-                      {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Add Stock
-                    </Button>
-                  </div>
-                </div>
-              </form>
-            )}
-          </>
-        )}
-
-        {mode === 'etf' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>Add ETF</DialogTitle>
-              <DialogDescription>
-                Search for an ETF ticker and enter the number of shares you own.
-              </DialogDescription>
-            </DialogHeader>
-
-            {!selectedStock ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="etf-search">Search ETF Ticker</Label>
-                  <div className="relative">
-                    <Input
-                      id="etf-search"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="e.g., SPY, QQQ, VTI"
-                      className="pr-10"
-                    />
-                    {isSearching && (
-                      <div className="absolute right-3 top-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {searchResults.length > 0 && (
-                  <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
-                    <Label className="text-xs text-muted-foreground font-normal uppercase tracking-wider">Search Results</Label>
-                    <div className="space-y-2">
-                      {searchResults.map((stock) => (
-                        <button
-                          key={stock.symbol}
-                          type="button"
-                          onClick={() => handleSelectStock(stock)}
-                          className="w-full p-3 text-left rounded-lg border hover:border-primary hover:bg-accent/50 transition-colors group"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold group-hover:text-primary transition-colors">{stock.symbol}</div>
-                            <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{stock.currency}</div>
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-0.5">{stock.name}</div>
-                          <div className="text-xs text-muted-foreground mt-1 opacity-70">
-                            {stock.type || 'ETF'} • {stock.region}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {searchQuery && !isSearching && searchResults.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
-                    <p className="text-sm">No results found</p>
-                    <p className="text-xs mt-1">Try searching for a different ticker symbol</p>
-                  </div>
-                )}
-
-                <div className="flex justify-between gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setMode('choose')}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleOpenChange(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
-                <div className="rounded-lg border bg-muted/30 p-4 flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="font-bold text-xl">{selectedStock.symbol}</div>
-                    <div className="text-sm font-medium">{selectedStock.name}</div>
-                    <div className="text-xs text-muted-foreground flex gap-2 items-center mt-1">
-                      <span className="bg-background border px-1.5 py-0.5 rounded text-[10px] uppercase">{selectedStockType}</span>
-                      <span>{selectedStock.region}</span>
-                      <span>{selectedStock.currency}</span>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => setSelectedStock(null)}
-                  >
-                    Change
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="etf-quantity">Number of Shares</Label>
-                  <Input
-                    id="etf-quantity"
-                    name="quantity"
-                    type="number"
-                    step="0.0001"
-                    placeholder="e.g., 10"
-                    required
-                    autoFocus
-                    className="text-lg"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="etf-notes">Notes (Optional)</Label>
-                  <Input
-                    id="etf-notes"
-                    name="description"
-                    placeholder="e.g., Brokerage account"
-                  />
-                </div>
-
-                <div className="flex justify-between gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setSelectedStock(null)}
-                  >
-                    Back
-                  </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleOpenChange(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isLoading}>
-                      {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Add ETF
-                    </Button>
-                  </div>
-                </div>
-              </form>
+              <StockForm
+                selectedStock={selectedStock}
+                assetType={mode}
+                isLoading={isLoading}
+                onSubmit={handleSubmit}
+                onBack={handleClearStock}
+                onCancel={() => handleOpenChange(false)}
+                onChangeStock={handleClearStock}
+              />
             )}
           </>
         )}
@@ -577,7 +272,7 @@ export function AddAssetDialog() {
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => setMode('choose')}
+                  onClick={handleBackToChoose}
                 >
                   Back
                 </Button>
@@ -600,5 +295,5 @@ export function AddAssetDialog() {
         )}
       </DialogContent>
     </Dialog>
-  );
+  )
 }

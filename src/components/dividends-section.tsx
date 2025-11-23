@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getDividendsWithPayouts, calculateDividendMetrics, fetchAndStoreDividends, type DividendWithPayout } from '@/app/actions';
+import { useState } from 'react';
+import { fetchAndStoreDividends, type DividendWithPayout } from '@/app/actions';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2, TrendingUp } from 'lucide-react';
 
@@ -9,34 +9,26 @@ interface DividendsSectionProps {
   assetId: number;
   assetSymbol?: string | null;
   currency: string;
+  dividends: DividendWithPayout[];
+  metrics: {
+    totalDividends: number;
+    ytdDividends: number;
+    dividendYield: number;
+    count: number;
+  };
+  onDividendsRefreshed: () => void;
 }
 
-export function DividendsSection({ assetId, assetSymbol, currency }: DividendsSectionProps) {
-  const [dividends, setDividends] = useState<DividendWithPayout[]>([]);
-  const [metrics, setMetrics] = useState({
-    totalDividends: 0,
-    ytdDividends: 0,
-    dividendYield: 0,
-    count: 0,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+export function DividendsSection({ 
+  assetId, 
+  assetSymbol, 
+  currency, 
+  dividends, 
+  metrics,
+  onDividendsRefreshed 
+}: DividendsSectionProps) {
   const [isFetching, setIsFetching] = useState(false);
   const [fetchMessage, setFetchMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadData();
-  }, [assetId]);
-
-  async function loadData() {
-    setIsLoading(true);
-    const [divs, mets] = await Promise.all([
-      getDividendsWithPayouts(assetId),
-      calculateDividendMetrics(assetId),
-    ]);
-    setDividends(divs);
-    setMetrics(mets);
-    setIsLoading(false);
-  }
 
   async function handleFetchDividends() {
     if (!assetSymbol) return;
@@ -48,7 +40,7 @@ export function DividendsSection({ assetId, assetSymbol, currency }: DividendsSe
     
     if (result.success) {
       setFetchMessage(result.message || 'Dividends updated successfully');
-      await loadData();
+      onDividendsRefreshed();
     } else if (result.error) {
       setFetchMessage(`Error: ${result.error}`);
     }
@@ -57,14 +49,6 @@ export function DividendsSection({ assetId, assetSymbol, currency }: DividendsSe
 
     // Clear message after 5 seconds
     setTimeout(() => setFetchMessage(null), 5000);
-  }
-
-  if (isLoading) {
-    return (
-      <div className="py-8 text-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto" />
-      </div>
-    );
   }
 
   return (

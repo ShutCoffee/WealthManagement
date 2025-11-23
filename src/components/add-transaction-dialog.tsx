@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -44,14 +44,7 @@ export function AddTransactionDialog({
   const [priceMessage, setPriceMessage] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Auto-fetch price when date changes
-  useEffect(() => {
-    if (selectedDate && assetSymbol && open) {
-      fetchPriceForDate();
-    }
-  }, [selectedDate, assetSymbol, open]);
-
-  async function fetchPriceForDate() {
+  const fetchPriceForDate = useCallback(async () => {
     if (!assetSymbol || !selectedDate) return;
 
     setIsFetchingPrice(true);
@@ -71,9 +64,16 @@ export function AddTransactionDialog({
     }
 
     setIsFetchingPrice(false);
-  }
+  }, [assetSymbol, selectedDate]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  // Auto-fetch price when date changes
+  useEffect(() => {
+    if (selectedDate && assetSymbol && open) {
+      fetchPriceForDate();
+    }
+  }, [selectedDate, assetSymbol, open, fetchPriceForDate]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
@@ -95,9 +95,9 @@ export function AddTransactionDialog({
     } else if (result.error) {
       alert(result.error);
     }
-  }
+  }, [assetId, transactionType, onTransactionAdded]);
 
-  function handleOpenChange(isOpen: boolean) {
+  const handleOpenChange = useCallback((isOpen: boolean) => {
     setOpen(isOpen);
     if (!isOpen) {
       setTransactionType('buy');
@@ -106,7 +106,15 @@ export function AddTransactionDialog({
       setPriceMessage('');
       formRef.current?.reset();
     }
-  }
+  }, []);
+
+  const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedDate(e.target.value);
+  }, []);
+
+  const handlePriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setPricePerShare(e.target.value);
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -150,7 +158,7 @@ export function AddTransactionDialog({
               name="date"
               type="date"
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={handleDateChange}
               required
             />
           </div>
@@ -179,7 +187,7 @@ export function AddTransactionDialog({
               step="0.01"
               placeholder="e.g., 150.00"
               value={pricePerShare}
-              onChange={(e) => setPricePerShare(e.target.value)}
+              onChange={handlePriceChange}
               required
             />
             {priceMessage && (
@@ -215,4 +223,3 @@ export function AddTransactionDialog({
     </Dialog>
   );
 }
-

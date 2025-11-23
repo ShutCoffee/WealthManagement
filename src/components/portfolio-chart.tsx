@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui/button';
 
@@ -24,16 +24,21 @@ export function PortfolioChart({ assets }: PortfolioChartProps) {
   const [selectedRange, setSelectedRange] = useState('1Y');
 
   // Calculate total portfolio value
-  const totalValue = assets.reduce((sum, asset) => sum + parseFloat(asset.value), 0);
+  const totalValue = useMemo(
+    () => assets.reduce((sum, asset) => sum + parseFloat(asset.value), 0),
+    [assets]
+  );
 
   // Generate mock historical data based on current value
   // In a real implementation, this would fetch actual historical portfolio values
-  const generateMockData = () => {
+  // Using useMemo to prevent hydration errors by ensuring consistent data generation
+  const chartData = useMemo(() => {
     const dataPoints = selectedRange === '1Y' ? 12 : selectedRange === '6M' ? 6 : selectedRange === '3M' ? 3 : 1;
     const data = [];
+    const now = Date.now();
     
     for (let i = dataPoints; i >= 0; i--) {
-      const date = new Date();
+      const date = new Date(now);
       if (selectedRange === '1Y') {
         date.setMonth(date.getMonth() - i);
       } else if (selectedRange === '6M') {
@@ -46,8 +51,8 @@ export function PortfolioChart({ assets }: PortfolioChartProps) {
         date.setMonth(i === dataPoints ? 0 : date.getMonth() - i);
       }
       
-      // Generate value with some variation (mock data)
-      const variation = (Math.random() - 0.5) * 0.15; // ±7.5% variation
+      // Generate value with deterministic variation based on index (no random)
+      const variation = (Math.sin(i * 0.5) * 0.075); // Deterministic ±7.5% variation
       const historicalValue = i === 0 ? totalValue : totalValue * (0.90 + (i / dataPoints) * 0.10 + variation);
       
       data.push({
@@ -61,16 +66,29 @@ export function PortfolioChart({ assets }: PortfolioChartProps) {
     }
     
     return data;
-  };
+  }, [selectedRange, totalValue]);
 
-  const chartData = generateMockData();
-  const minValue = Math.min(...chartData.map(d => d.value));
-  const maxValue = Math.max(...chartData.map(d => d.value));
-  const valueChange = chartData.length >= 2 ? chartData[chartData.length - 1].value - chartData[0].value : 0;
-  const changePercent = chartData.length >= 2 && chartData[0].value > 0 
-    ? ((valueChange / chartData[0].value) * 100).toFixed(2) 
-    : '0.00';
-  const isPositive = valueChange >= 0;
+  const { minValue, maxValue, valueChange, changePercent, isPositive } = useMemo(() => {
+    const min = Math.min(...chartData.map(d => d.value));
+    const max = Math.max(...chartData.map(d => d.value));
+    const change = chartData.length >= 2 ? chartData[chartData.length - 1].value - chartData[0].value : 0;
+    const percent = chartData.length >= 2 && chartData[0].value > 0 
+      ? ((change / chartData[0].value) * 100).toFixed(2) 
+      : '0.00';
+    const positive = change >= 0;
+
+    return {
+      minValue: min,
+      maxValue: max,
+      valueChange: change,
+      changePercent: percent,
+      isPositive: positive
+    };
+  }, [chartData]);
+
+  const handleRangeChange = useCallback((value: string) => {
+    setSelectedRange(value);
+  }, []);
 
   return (
     <div className="space-y-0">
@@ -89,7 +107,7 @@ export function PortfolioChart({ assets }: PortfolioChartProps) {
               variant={selectedRange === option.value ? 'default' : 'ghost'}
               size="sm"
               className="h-7 px-2"
-              onClick={() => setSelectedRange(option.value)}
+              onClick={() => handleRangeChange(option.value)}
             >
               {option.label}
             </Button>
@@ -154,4 +172,3 @@ export function PortfolioChart({ assets }: PortfolioChartProps) {
     </div>
   );
 }
-
