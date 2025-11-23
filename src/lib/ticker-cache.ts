@@ -1,21 +1,15 @@
 /**
  * Ticker Cache Service
- * Manages local database cache of US stock tickers for fast search
+ * Manages local database cache of stock tickers for fast search
+ * Uses Alpha Vantage for ticker listing (requires CSV download)
+ * Note: Free tier has 25 API calls/day limit - use ticker cache to minimize API usage
  */
 
 import { db } from '@/db';
 import { tickers } from '@/db/schema';
 import { sql, ilike, or } from 'drizzle-orm';
 
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
-const BASE_URL = 'https://finnhub.io/api/v1';
-
-interface FinnhubSymbol {
-  description: string;
-  displaySymbol: string;
-  symbol: string;
-  type: string;
-}
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
 export interface StockSearchResult {
   symbol: string;
@@ -26,32 +20,63 @@ export interface StockSearchResult {
 }
 
 /**
- * Initialize ticker cache by fetching all US stocks from Finnhub
- * This should be run once to populate the database
+ * Initialize ticker cache
+ * Note: Alpha Vantage provides listing status via CSV download endpoint
+ * For a comprehensive ticker list, consider downloading the CSV separately
+ * Or use searchLocalTickers for real-time search via Alpha Vantage API
  */
 export async function initializeTickerCache(): Promise<{ success: boolean; count?: number; error?: string }> {
-  if (!FINNHUB_API_KEY) {
-    return { success: false, error: 'FINNHUB_API_KEY is not set' };
+  if (!ALPHA_VANTAGE_API_KEY) {
+    return { success: false, error: 'ALPHA_VANTAGE_API_KEY is not set' };
   }
 
   try {
-    // Fetch US stock symbols from Finnhub
-    const url = `${BASE_URL}/stock/symbol?exchange=US&token=${FINNHUB_API_KEY}`;
+    // Alpha Vantage provides a CSV listing endpoint for active/delisted stocks
+    // https://www.alphavantage.co/query?function=LISTING_STATUS&apikey=YOUR_API_KEY
+    const url = `https://www.alphavantage.co/query?function=LISTING_STATUS&apikey=${ALPHA_VANTAGE_API_KEY}`;
     const response = await fetch(url);
-    const data: FinnhubSymbol[] = await response.json();
-
-    if (!Array.isArray(data)) {
-      return { success: false, error: 'Invalid response from Finnhub' };
+    
+    if (!response.ok) {
+      return { success: false, error: 'Failed to fetch ticker list from Alpha Vantage' };
     }
 
-    // Filter out invalid entries and prepare for insertion
-    const tickerData = data
-      .filter((item) => item.symbol && item.description)
-      .map((item) => ({
-        symbol: item.symbol,
-        name: item.description,
-        type: item.type || 'Common Stock',
-      }));
+    const csvText = await response.text();
+    
+    // Check for rate limit message
+    if (csvText.includes('Thank you for using Alpha Vantage') || csvText.includes('premium')) {
+      return { success: false, error: 'Rate limit reached or premium feature required' };
+    }
+
+    // Parse CSV (skip header row)
+    const lines = csvText.trim().split('\n');
+    const tickerData: Array<{ symbol: string; name: string; type: string }> = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // CSV format: symbol,name,exchange,assetType,ipoDate,delistingDate,status
+      const parts = line.split(',');
+      if (parts.length >= 4) {
+        const symbol = parts[0].trim();
+        const name = parts[1].trim();
+        const assetType = parts[3].trim();
+        const status = parts[6]?.trim();
+
+        // Only include active stocks/ETFs
+        if (symbol && name && status === 'Active') {
+          tickerData.push({
+            symbol,
+            name,
+            type: assetType || 'Stock',
+          });
+        }
+      }
+    }
+
+    if (tickerData.length === 0) {
+      return { success: false, error: 'No valid tickers found in response' };
+    }
 
     // Clear existing tickers and insert new ones
     await db.delete(tickers);

@@ -15,6 +15,13 @@
       "when": 1763737300808,
       "tag": "0001_sweet_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1763894146963,
+      "tag": "0002_mighty_ozymandias",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/dialog';
 import { getAssetTransactions, calculateAssetProfit, deleteTransaction } from '@/app/actions';
 import { AddTransactionDialog } from '@/components/add-transaction-dialog';
+import { DividendsSection } from '@/components/dividends-section';
 import { Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Transaction } from '@/db/schema';
 
 interface AssetDetailDialogProps {
@@ -32,6 +34,7 @@ interface ProfitData {
   totalCost: number;
   unrealizedGain: number;
   realizedGain: number;
+  dividendIncome: number;
   totalGain: number;
   gainPercentage: number;
 }
@@ -87,7 +90,7 @@ export function AssetDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{assetName}</DialogTitle>
           <DialogDescription>
@@ -98,120 +101,162 @@ export function AssetDetailDialog({
         {isLoading ? (
           <div className="py-8 text-center text-muted-foreground">Loading...</div>
         ) : (
-          <div className="space-y-6">
-            {/* Profit Summary */}
-            {profitData && profitData.totalShares > 0 && (
-              <div className="rounded-lg border bg-card p-4">
-                <h3 className="font-semibold mb-3">Performance Summary</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-muted-foreground">Total Shares</div>
-                    <div className="font-medium">{profitData.totalShares.toFixed(4)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Avg Cost Basis</div>
-                    <div className="font-medium">{currency} {profitData.avgCostBasis.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Current Price</div>
-                    <div className="font-medium">{currency} {profitData.currentPrice.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Current Value</div>
-                    <div className="font-medium">{currency} {profitData.currentValue.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Unrealized Gain/Loss</div>
-                    <div className={`font-medium flex items-center gap-1 ${profitData.unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profitData.unrealizedGain >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                      {profitData.unrealizedGain >= 0 ? '+' : ''}{currency} {profitData.unrealizedGain.toFixed(2)}
-                      <span className="text-xs">({profitData.gainPercentage.toFixed(2)}%)</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Realized Gain/Loss</div>
-                    <div className={`font-medium ${profitData.realizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profitData.realizedGain >= 0 ? '+' : ''}{currency} {profitData.realizedGain.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="col-span-2 pt-2 border-t">
-                    <div className="text-muted-foreground">Total Gain/Loss</div>
-                    <div className={`font-semibold text-lg ${profitData.totalGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profitData.totalGain >= 0 ? '+' : ''}{currency} {profitData.totalGain.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="transactions">Transactions</TabsTrigger>
+              <TabsTrigger value="dividends" disabled={!assetSymbol}>Dividends</TabsTrigger>
+            </TabsList>
 
-            {/* Transaction List */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold">Transaction History</h3>
-                <AddTransactionDialog
-                  assetId={assetId}
-                  assetName={assetName}
-                  assetSymbol={assetSymbol}
-                  onTransactionAdded={loadData}
-                />
-              </div>
-
-              {transactions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground rounded-lg border">
-                  No transactions yet. Add your first transaction to track performance.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {transactions.map((transaction) => (
-                    <div
-                      key={transaction.id}
-                      className="flex items-center justify-between p-3 rounded-lg border"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${
-                            transaction.type === 'buy' 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {transaction.type.toUpperCase()}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {new Date(transaction.date).toISOString().split('T')[0]}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-sm">
-                          <span className="font-medium">{parseFloat(transaction.quantity).toFixed(4)}</span> shares
-                          {' @ '}
-                          <span className="font-medium">{currency} {parseFloat(transaction.pricePerShare).toFixed(2)}</span>
-                        </div>
-                        {transaction.notes && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {transaction.notes}
-                          </div>
-                        )}
+            <div className="mt-4">
+              {/* Overview Tab */}
+              <TabsContent value="overview" className="space-y-6">
+                {/* Profit Summary */}
+                {profitData && profitData.totalShares > 0 && (
+                  <div className="rounded-lg border bg-card p-4">
+                    <h3 className="font-semibold mb-3">Performance Summary</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-muted-foreground">Total Shares</div>
+                        <div className="font-medium">{profitData.totalShares.toFixed(4)}</div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <div className="font-semibold">
-                            {currency} {parseFloat(transaction.totalValue).toFixed(2)}
-                          </div>
+                      <div>
+                        <div className="text-muted-foreground">Avg Cost Basis</div>
+                        <div className="font-medium">{currency} {profitData.avgCostBasis.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Current Price</div>
+                        <div className="font-medium">{currency} {profitData.currentPrice.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Current Value</div>
+                        <div className="font-medium">{currency} {profitData.currentValue.toFixed(2)}</div>
+                      </div>
+                      <div>
+                          <div className="text-muted-foreground">Unrealized Gain/Loss</div>
+                        <div className={`font-medium flex items-center gap-1 ${profitData.unrealizedGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'}`}>
+                          {profitData.unrealizedGain >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                          {profitData.unrealizedGain >= 0 ? '+' : ''}{currency} {profitData.unrealizedGain.toFixed(2)}
+                          <span className="text-xs">({profitData.gainPercentage.toFixed(2)}%)</span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeleteTransaction(transaction.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Realized Gain/Loss</div>
+                        <div className={`font-medium ${profitData.realizedGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'}`}>
+                          {profitData.realizedGain >= 0 ? '+' : ''}{currency} {profitData.realizedGain.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-muted-foreground">Dividend Income</div>
+                        <div className={`font-medium ${(profitData.dividendIncome ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'}`}>
+                          {(profitData.dividendIncome ?? 0) > 0 ? '+' : ''}{currency} {(profitData.dividendIncome ?? 0).toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="col-span-2 pt-2 border-t">
+                        <div className="text-muted-foreground">Total Return (incl. dividends)</div>
+                        <div className={`font-semibold text-lg flex items-center gap-1 ${profitData.totalGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'}`}>
+                          {profitData.totalGain >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                          {profitData.totalGain >= 0 ? '+' : ''}{currency} {profitData.totalGain.toFixed(2)}
+                          <span className="text-sm">({profitData.gainPercentage.toFixed(2)}%)</span>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Transactions Tab */}
+              <TabsContent value="transactions">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold">Transaction History</h3>
+                    <AddTransactionDialog
+                      assetId={assetId}
+                      assetName={assetName}
+                      assetSymbol={assetSymbol}
+                      onTransactionAdded={loadData}
+                    />
+                  </div>
+
+                  {transactions.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground rounded-lg border">
+                      No transactions yet. Add your first transaction to track performance.
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-muted/50 border-b">
+                            <tr>
+                              <th className="text-left p-3 text-sm font-medium">Date</th>
+                              <th className="text-left p-3 text-sm font-medium">Type</th>
+                              <th className="text-right p-3 text-sm font-medium">Shares</th>
+                              <th className="text-right p-3 text-sm font-medium">Price</th>
+                              <th className="text-right p-3 text-sm font-medium">Total Value</th>
+                              <th className="text-right p-3 text-sm font-medium">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {transactions.map((transaction) => (
+                              <tr key={transaction.id} className="hover:bg-muted/30">
+                                <td className="p-3 text-sm">
+                                  {new Date(transaction.date).toISOString().split('T')[0]}
+                                  {transaction.notes && (
+                                    <div className="text-xs text-muted-foreground mt-0.5">
+                                      {transaction.notes}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-3 text-sm">
+                                  <span className={`px-2 py-0.5 text-xs rounded font-medium ${
+                                    transaction.type === 'buy' 
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
+                                      : 'bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
+                                  }`}>
+                                    {transaction.type.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-sm text-right">
+                                  {parseFloat(transaction.quantity).toFixed(4)}
+                                </td>
+                                <td className="p-3 text-sm text-right">
+                                  {currency} {parseFloat(transaction.pricePerShare).toFixed(2)}
+                                </td>
+                                <td className="p-3 text-sm text-right font-medium">
+                                  {currency} {parseFloat(transaction.totalValue).toFixed(2)}
+                                </td>
+                                <td className="p-3 text-sm text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                    onClick={() => handleDeleteTransaction(transaction.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </TabsContent>
+
+              {/* Dividends Tab */}
+              <TabsContent value="dividends">
+                {assetSymbol && (
+                  <DividendsSection 
+                    assetId={assetId} 
+                    assetSymbol={assetSymbol}
+                    currency={currency}
+                  />
+                )}
+              </TabsContent>
             </div>
-          </div>
+          </Tabs>
         )}
       </DialogContent>
     </Dialog>

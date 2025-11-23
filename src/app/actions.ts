@@ -1,10 +1,10 @@
 'use server';
 
 import { db } from '@/db';
-import { assets, transactions } from '@/db/schema';
+import { assets, transactions, dividends } from '@/db/schema';
 import { revalidatePath } from 'next/cache';
 import { eq, desc } from 'drizzle-orm';
-import { getStockPrice } from '@/lib/stock-api';
+import { getStockPrice, getDividendHistory, getHistoricalPrices, getStockPriceOnDate } from '@/lib/stock-api';
 import { searchLocalTickers, isTickerCacheInitialized, initializeTickerCache } from '@/lib/ticker-cache';
 
 export async function searchStock(keyword: string) {
@@ -137,7 +137,7 @@ export async function refreshStockPrices() {
     const errors: string[] = [];
 
     // Update each asset with current price
-    // Finnhub allows 60 calls/minute, so no need for long delays
+    // Alpha Vantage free tier: 25 calls/day - use sparingly!
     for (const asset of assetsWithSymbols) {
       const quote = await getStockPrice(asset.symbol!);
 
@@ -157,9 +157,9 @@ export async function refreshStockPrices() {
         errors.push(asset.symbol!);
       }
 
-      // Small 100ms delay between requests (allows 600 requests/minute, well under 60/min limit)
+      // Small delay between requests
       if (assetsWithSymbols.indexOf(asset) < assetsWithSymbols.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
 
@@ -333,12 +333,11 @@ export async function calculateAssetProfit(assetId: number) {
 
     const assetData = asset[0];
 
-    // Get all transactions
-    const assetTransactions = await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.assetId, assetId))
-      .orderBy(desc(transactions.date));
+    // Get all transactions and dividends
+    const [assetTransactions, assetDividends] = await Promise.all([
+      db.select().from(transactions).where(eq(transactions.assetId, assetId)).orderBy(desc(transactions.date)),
+      db.select().from(dividends).where(eq(dividends.assetId, assetId))
+    ]);
 
     if (assetTransactions.length === 0) {
       return {
@@ -349,6 +348,7 @@ export async function calculateAssetProfit(assetId: number) {
         totalCost: 0,
         unrealizedGain: 0,
         realizedGain: 0,
+        dividendIncome: 0,
         totalGain: 0,
         gainPercentage: 0,
       };
@@ -392,6 +392,32 @@ export async function calculateAssetProfit(assetId: number) {
       }
     }
 
+    // Calculate dividend income
+    // Helper to calculate shares owned on a specific date
+    const getSharesOnDate = (date: Date) => {
+      return assetTransactions.reduce((total, t) => {
+        const tDate = new Date(t.date);
+        // Transaction must happen BEFORE ex-date to qualify for dividend
+        if (tDate < date) {
+          const qty = parseFloat(t.quantity);
+          return t.type === 'buy' ? total + qty : total - qty;
+        }
+        return total;
+      }, 0);
+    };
+
+    let dividendIncome = 0;
+    for (const div of assetDividends) {
+      const exDate = new Date(div.exDate);
+      const shares = getSharesOnDate(exDate);
+      
+      // Only count if shares were held
+      if (shares > 0) {
+        const amount = parseFloat(div.amount);
+        dividendIncome += amount * shares;
+      }
+    }
+
     // Calculate remaining cost basis from unsold shares
     let remainingCost = 0;
     for (const purchase of purchaseQueue) {
@@ -404,9 +430,13 @@ export async function calculateAssetProfit(assetId: number) {
 
     const currentValue = totalShares * currentPrice;
     const unrealizedGain = currentValue - remainingCost;
-    const totalGain = unrealizedGain + realizedGain;
+    
+    // Total gain now includes dividends
+    const totalGain = unrealizedGain + realizedGain + dividendIncome;
     const avgCostBasis = totalShares > 0 ? remainingCost / totalShares : 0;
-    const gainPercentage = remainingCost > 0 ? (unrealizedGain / remainingCost) * 100 : 0;
+    
+    // Gain percentage includes dividends in total return
+    const gainPercentage = remainingCost > 0 ? (totalGain / remainingCost) * 100 : 0;
 
     return {
       totalShares,
@@ -416,6 +446,7 @@ export async function calculateAssetProfit(assetId: number) {
       totalCost: remainingCost,
       unrealizedGain,
       realizedGain,
+      dividendIncome,
       totalGain,
       gainPercentage,
     };
@@ -425,5 +456,260 @@ export async function calculateAssetProfit(assetId: number) {
   }
 }
 
+
+// ============ DIVIDEND ACTIONS ============
+
+export async function fetchAndStoreDividends(assetId: number) {
+  try {
+    // Get the asset
+    const asset = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
+    
+    if (!asset || asset.length === 0 || !asset[0].symbol) {
+      return { error: 'Asset not found or has no symbol' };
+    }
+
+    const symbol = asset[0].symbol;
+
+    // Fetch dividend data from Alpha Vantage
+    const dividendData = await getDividendHistory(symbol);
+
+    if (dividendData.length === 0) {
+      return { success: true, message: 'No dividends found for this symbol' };
+    }
+
+    // Clear existing dividends for this asset
+    await db.delete(dividends).where(eq(dividends.assetId, assetId));
+
+    // Insert new dividend data
+    const dividendsToInsert = dividendData.map((div) => ({
+      assetId,
+      exDate: div.exDate,
+      paymentDate: div.paymentDate,
+      amount: div.amount.toString(),
+      currency: div.currency,
+      type: 'cash' as const,
+    }));
+
+    await db.insert(dividends).values(dividendsToInsert);
+
+    revalidatePath('/');
+    return { success: true, message: `Fetched ${dividendData.length} dividend records` };
+  } catch (error) {
+    console.error('Failed to fetch and store dividends:', error);
+    return { error: 'Failed to fetch dividends' };
+  }
+}
+
+export async function getDividends(assetId: number) {
+  try {
+    const assetDividends = await db
+      .select()
+      .from(dividends)
+      .where(eq(dividends.assetId, assetId))
+      .orderBy(desc(dividends.exDate));
+    
+    return assetDividends;
+  } catch (error) {
+    console.error('Failed to fetch dividends:', error);
+    return [];
+  }
+}
+
+export interface DividendWithPayout {
+  id: number;
+  exDate: Date;
+  paymentDate: Date | null;
+  amount: string;
+  currency: string;
+  type: string;
+  sharesHeld: number;
+  totalPayout: number;
+}
+
+export async function getDividendsWithPayouts(assetId: number): Promise<DividendWithPayout[]> {
+  try {
+    const [assetDividends, assetTransactions] = await Promise.all([
+      db.select().from(dividends).where(eq(dividends.assetId, assetId)),
+      db.select().from(transactions).where(eq(transactions.assetId, assetId))
+    ]);
+
+    // Helper to calculate shares owned on a specific date
+    const getSharesOnDate = (date: Date) => {
+      return assetTransactions.reduce((total, t) => {
+        const tDate = new Date(t.date);
+        // Transaction must happen BEFORE ex-date to qualify for dividend
+        if (tDate < date) {
+          const qty = parseFloat(t.quantity);
+          return t.type === 'buy' ? total + qty : total - qty;
+        }
+        return total;
+      }, 0);
+    };
+
+    // Map dividends with payout information
+    const dividendsWithPayouts: DividendWithPayout[] = assetDividends
+      .map((div) => {
+        const exDate = new Date(div.exDate);
+        const sharesHeld = getSharesOnDate(exDate);
+        const amount = parseFloat(div.amount);
+        const totalPayout = amount * sharesHeld;
+
+        return {
+          id: div.id,
+          exDate: div.exDate,
+          paymentDate: div.paymentDate,
+          amount: div.amount,
+          currency: div.currency,
+          type: div.type,
+          sharesHeld,
+          totalPayout,
+        };
+      })
+      // Filter out dividends where no shares were held
+      .filter((div) => div.sharesHeld > 0)
+      // Sort by ex-date descending (most recent first)
+      .sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
+
+    return dividendsWithPayouts;
+  } catch (error) {
+    console.error('Failed to fetch dividends with payouts:', error);
+    return [];
+  }
+}
+
+export async function calculateDividendMetrics(assetId: number) {
+  try {
+    const [assetDividends, assetTransactions] = await Promise.all([
+      db.select().from(dividends).where(eq(dividends.assetId, assetId)),
+      db.select().from(transactions).where(eq(transactions.assetId, assetId))
+    ]);
+
+    // Helper to calculate shares owned on a specific date
+    const getSharesOnDate = (date: Date) => {
+      return assetTransactions.reduce((total, t) => {
+        const tDate = new Date(t.date);
+        // Transaction must happen BEFORE ex-date to qualify for dividend
+        if (tDate < date) {
+          const qty = parseFloat(t.quantity);
+          return t.type === 'buy' ? total + qty : total - qty;
+        }
+        return total;
+      }, 0);
+    };
+
+    let totalDividends = 0;
+    let ytdDividends = 0;
+    const currentYear = new Date().getFullYear();
+
+    for (const div of assetDividends) {
+      const exDate = new Date(div.exDate);
+      const shares = getSharesOnDate(exDate);
+      
+      // Only count if shares were held
+      if (shares > 0) {
+        const amount = parseFloat(div.amount);
+        const payout = amount * shares;
+        
+        totalDividends += payout;
+        
+        if (exDate.getFullYear() === currentYear) {
+          ytdDividends += payout;
+        }
+      }
+    }
+
+    // Get asset for yield calculation
+    const asset = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
+    
+    let dividendYield = 0;
+    if (asset && asset.length > 0 && asset[0].quantity) {
+      const currentValue = parseFloat(asset[0].value);
+      const quantity = parseFloat(asset[0].quantity);
+      const pricePerShare = quantity > 0 ? currentValue / quantity : 0;
+      
+      // Annual yield = (annual dividend per share / price per share) * 100
+      // We'll estimate annual dividend based on last 12 months of dividends (sum of amounts, not payouts)
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      
+      const trailing12MonthDividends = assetDividends
+        .filter(d => new Date(d.exDate) >= oneYearAgo)
+        .reduce((sum, d) => sum + parseFloat(d.amount), 0);
+
+      if (pricePerShare > 0 && trailing12MonthDividends > 0) {
+        dividendYield = (trailing12MonthDividends / pricePerShare) * 100;
+      }
+    }
+
+    return {
+      totalDividends,
+      ytdDividends,
+      dividendYield,
+      count: assetDividends.length,
+    };
+  } catch (error) {
+    console.error('Failed to calculate dividend metrics:', error);
+    return {
+      totalDividends: 0,
+      ytdDividends: 0,
+      dividendYield: 0,
+      count: 0,
+    };
+  }
+}
+
+export async function getAllDividendMetrics() {
+  try {
+    // Get all investment assets with symbols
+    const investmentAssets = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.type, 'investment'));
+
+    const assetsWithSymbols = investmentAssets.filter((asset) => asset.symbol);
+    const currentYear = new Date().getFullYear();
+    let totalYTDDividends = 0;
+
+    // This loop could be optimized with a single complex query, but this is safer for now
+    for (const asset of assetsWithSymbols) {
+      const metrics = await calculateDividendMetrics(asset.id);
+      totalYTDDividends += metrics.ytdDividends;
+    }
+
+    return {
+      totalYTDDividends,
+    };
+  } catch (error) {
+    console.error('Failed to calculate portfolio dividend metrics:', error);
+    return {
+      totalYTDDividends: 0,
+    };
+  }
+}
+
+// ============ HISTORICAL PRICE ACTIONS ============
+
+export async function getHistoricalPriceData(symbol: string, range: string = '1Y') {
+  try {
+    const priceData = await getHistoricalPrices(symbol, range);
+    return { success: true, data: priceData };
+  } catch (error) {
+    console.error('Failed to fetch historical price data:', error);
+    return { error: 'Failed to fetch historical data' };
+  }
+}
+
+export async function getStockPriceForDate(symbol: string, date: string) {
+  try {
+    const priceData = await getStockPriceOnDate(symbol, date);
+    if (priceData) {
+      return { success: true, price: priceData.price, actualDate: priceData.actualDate };
+    }
+    return { error: 'No price data available for this date' };
+  } catch (error) {
+    console.error('Failed to fetch price for date:', error);
+    return { error: 'Failed to fetch price' };
+  }
+}
 
 

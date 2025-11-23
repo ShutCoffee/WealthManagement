@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -19,8 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { createTransaction } from '@/app/actions';
-import { PlusCircle } from 'lucide-react';
+import { createTransaction, getStockPriceForDate } from '@/app/actions';
+import { PlusCircle, Loader2 } from 'lucide-react';
 
 interface AddTransactionDialogProps {
   assetId: number;
@@ -38,7 +38,40 @@ export function AddTransactionDialog({
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transactionType, setTransactionType] = useState<'buy' | 'sell'>('buy');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [pricePerShare, setPricePerShare] = useState('');
+  const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+  const [priceMessage, setPriceMessage] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Auto-fetch price when date changes
+  useEffect(() => {
+    if (selectedDate && assetSymbol && open) {
+      fetchPriceForDate();
+    }
+  }, [selectedDate, assetSymbol, open]);
+
+  async function fetchPriceForDate() {
+    if (!assetSymbol || !selectedDate) return;
+
+    setIsFetchingPrice(true);
+    setPriceMessage('');
+
+    const result = await getStockPriceForDate(assetSymbol, selectedDate);
+    
+    if ('error' in result) {
+      setPriceMessage(result.error || 'Could not fetch price');
+    } else if (result.success && result.price) {
+      setPricePerShare(result.price.toFixed(2));
+      if (result.actualDate !== selectedDate) {
+        setPriceMessage(`Using price from ${result.actualDate} (most recent trading day)`);
+      } else {
+        setPriceMessage('Price auto-filled from market data');
+      }
+    }
+
+    setIsFetchingPrice(false);
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -54,6 +87,9 @@ export function AddTransactionDialog({
     if (result.success) {
       setOpen(false);
       setTransactionType('buy');
+      setSelectedDate('');
+      setPricePerShare('');
+      setPriceMessage('');
       formRef.current?.reset();
       onTransactionAdded?.();
     } else if (result.error) {
@@ -65,6 +101,9 @@ export function AddTransactionDialog({
     setOpen(isOpen);
     if (!isOpen) {
       setTransactionType('buy');
+      setSelectedDate('');
+      setPricePerShare('');
+      setPriceMessage('');
       formRef.current?.reset();
     }
   }
@@ -82,6 +121,7 @@ export function AddTransactionDialog({
           <DialogTitle>Add Transaction</DialogTitle>
           <DialogDescription>
             Record a buy or sell transaction for {assetName}
+            {assetSymbol && ' - Price auto-fills from historical data'}
           </DialogDescription>
         </DialogHeader>
         
@@ -109,6 +149,8 @@ export function AddTransactionDialog({
               id="transaction-date"
               name="date"
               type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
               required
             />
           </div>
@@ -126,15 +168,25 @@ export function AddTransactionDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="transaction-price">Price Per Share</Label>
+            <Label htmlFor="transaction-price" className="flex items-center gap-2">
+              Price Per Share
+              {isFetchingPrice && <Loader2 className="h-3 w-3 animate-spin" />}
+            </Label>
             <Input
               id="transaction-price"
               name="pricePerShare"
               type="number"
               step="0.01"
               placeholder="e.g., 150.00"
+              value={pricePerShare}
+              onChange={(e) => setPricePerShare(e.target.value)}
               required
             />
+            {priceMessage && (
+              <p className={`text-xs ${priceMessage.includes('Could not') ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {priceMessage}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

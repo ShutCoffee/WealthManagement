@@ -35,6 +35,18 @@ export const transactions = pgTable('transactions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const dividends = pgTable('dividends', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').references(() => assets.id, { onDelete: 'cascade' }).notNull(),
+  exDate: timestamp('ex_date').notNull(), // Ex-dividend date
+  paymentDate: timestamp('payment_date'), // Actual payment date (may be null if not yet paid)
+  amount: decimal('amount', { precision: 15, scale: 4 }).notNull(), // Dividend amount per share
+  currency: varchar('currency', { length: 3 }).default('USD').notNull(),
+  type: varchar('type', { length: 10 }).default('cash').notNull(), // 'cash' or 'stock'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type Asset = typeof assets.$inferSelect;
 export type NewAsset = typeof assets.$inferInsert;
 
@@ -43,4 +55,7 @@ export type NewTicker = typeof tickers.$inferInsert;
 
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
+
+export type Dividend = typeof dividends.$inferSelect;
+export type NewDividend = typeof dividends.$inferInsert;
 

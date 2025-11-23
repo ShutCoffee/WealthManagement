@@ -60,7 +60,7 @@ export function AssetCard({ asset }: AssetCardProps) {
   const showProfit = asset.type === 'investment' && asset.symbol && !isLoading && profitData;
 
   return (
-    <div className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors">
+    <div className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
       <div className="flex-1">
         <div className="font-medium">{asset.name}</div>
         <div className="text-sm text-muted-foreground">
@@ -85,7 +85,7 @@ export function AssetCard({ asset }: AssetCardProps) {
           {showProfit && profitData && (
             <div
               className={`text-sm font-medium flex items-center justify-end gap-1 ${
-                profitData.unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'
+                profitData.unrealizedGain >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'
               }`}
             >
               {profitData.unrealizedGain >= 0 ? (
