@@ -9,6 +9,7 @@ export const assets = pgTable('assets', {
   currency: varchar('currency', { length: 3 }).default('USD').notNull(),
   description: text('description'),
   symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (e.g., 'AAPL', 'TSLA')
+  walletAddress: varchar('wallet_address', { length: 255 }), // EVM Wallet Address
   quantity: decimal('quantity', { precision: 15, scale: 4 }), // Number of shares/units
   lastPriceUpdate: timestamp('last_price_update'), // When price was last fetched from API
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -105,4 +106,13 @@ export type NewLiabilityPaymentRule = typeof liabilityPaymentRules.$inferInsert;
 
 export type LiabilityPayment = typeof liabilityPayments.$inferSelect;
 export type NewLiabilityPayment = typeof liabilityPayments.$inferInsert;
+
+export const waitlist = pgTable('waitlist', {
+  id: serial('id').primaryKey(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Waitlist = typeof waitlist.$inferSelect;
+export type NewWaitlist = typeof waitlist.$inferInsert;
 

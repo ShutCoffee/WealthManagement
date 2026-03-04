@@ -6,8 +6,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Wealth Management Tracker",
-  description: "A Kubera-like net worth tracker",
+  title: "Summa — Your Complete Wealth Picture",
+  description: "Track assets, liabilities, investments, and crypto in one place. Real-time prices, dividend tracking, and a clear view of your net worth.",
 };
 
 export default function RootLayout({
@@ -20,8 +20,8 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="dark"
+          forcedTheme="dark"
           disableTransitionOnChange
         >
           {children}

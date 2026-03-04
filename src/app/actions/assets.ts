@@ -5,6 +5,7 @@ import { assets, transactions, dividends } from '@/db/schema'
 import { revalidatePath } from 'next/cache'
 import { eq, desc } from 'drizzle-orm'
 import { getStockPrice } from '@/lib/stock-api'
+import { getWalletValue } from '@/lib/crypto-api'
 import { calculateProfit } from '@/lib/calculations/profit'
 
 export async function createAssetWithPrice(formData: FormData) {
@@ -16,6 +17,7 @@ export async function createAssetWithPrice(formData: FormData) {
   const description = formData.get('description') as string
   const symbol = formData.get('symbol') as string
   const quantity = formData.get('quantity') as string
+  const walletAddress = formData.get('walletAddress') as string
 
   if (!name || !type) {
     return { error: 'Name and type are required' }
@@ -36,6 +38,13 @@ export async function createAssetWithPrice(formData: FormData) {
         finalCurrency = quote.currency
         lastPriceUpdate = quote.lastUpdated
       }
+    } 
+    // If it's a crypto wallet, fetch current balance
+    else if (type === 'crypto' && walletAddress) {
+      const walletData = await getWalletValue(walletAddress)
+      finalValue = walletData.totalValue.toFixed(2)
+      lastPriceUpdate = new Date()
+      // We don't set pricePerShare for wallet as it's a collection of assets
     }
 
     const [newAsset] = await db.insert(assets).values({
@@ -47,6 +56,7 @@ export async function createAssetWithPrice(formData: FormData) {
       description: description || null,
       symbol: symbol || null,
       quantity: quantity || null,
+      walletAddress: walletAddress || null,
       lastPriceUpdate,
     }).returning()
 
@@ -83,6 +93,7 @@ export async function createAsset(formData: FormData) {
   const description = formData.get('description') as string
   const symbol = formData.get('symbol') as string
   const quantity = formData.get('quantity') as string
+  const walletAddress = formData.get('walletAddress') as string
 
   if (!name || !type || !value) {
     return { error: 'Name, type, and value are required' }
@@ -98,6 +109,7 @@ export async function createAsset(formData: FormData) {
       description: description || null,
       symbol: symbol || null,
       quantity: quantity || null,
+      walletAddress: walletAddress || null,
     })
 
     revalidatePath('/')
@@ -120,22 +132,33 @@ export async function getAssets() {
 
 export async function refreshStockPrices() {
   try {
+    // Fetch investment assets (stocks/ETFs) and crypto wallets
     const investmentAssets = await db
       .select()
       .from(assets)
       .where(eq(assets.type, 'investment'))
+    
+    const cryptoAssets = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.type, 'crypto'))
 
     const assetsWithSymbols = investmentAssets.filter(
       (asset) => asset.symbol && asset.quantity
     )
 
-    if (assetsWithSymbols.length === 0) {
-      return { success: true, message: 'No investment assets with symbols to update' }
+    const assetsWithWallets = cryptoAssets.filter(
+      (asset) => asset.walletAddress
+    )
+
+    if (assetsWithSymbols.length === 0 && assetsWithWallets.length === 0) {
+      return { success: true, message: 'No assets to update' }
     }
 
     let updatedCount = 0
     const errors: string[] = []
 
+    // Update Stocks/ETFs
     for (const asset of assetsWithSymbols) {
       const quote = await getStockPrice(asset.symbol!)
 
@@ -161,6 +184,28 @@ export async function refreshStockPrices() {
       }
     }
 
+    // Update Crypto Wallets
+    for (const asset of assetsWithWallets) {
+      const walletData = await getWalletValue(asset.walletAddress!)
+
+      if (walletData) {
+        await db
+          .update(assets)
+          .set({
+            value: walletData.totalValue.toFixed(2),
+            lastPriceUpdate: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(assets.id, asset.id))
+        updatedCount++
+      } else {
+        errors.push(`Wallet ${asset.name}`)
+      }
+      
+      // Small delay
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+
     revalidatePath('/')
 
     if (errors.length > 0) {
@@ -172,8 +217,8 @@ export async function refreshStockPrices() {
 
     return { success: true, message: `Successfully updated ${updatedCount} assets` }
   } catch (error) {
-    console.error('Failed to refresh stock prices:', error)
-    return { error: 'Failed to refresh stock prices' }
+    console.error('Failed to refresh prices:', error)
+    return { error: 'Failed to refresh prices' }
   }
 }
 
@@ -262,4 +307,3 @@ export async function calculateAssetsProfit(assetIds: number[]) {
     return {}
   }
 }
-

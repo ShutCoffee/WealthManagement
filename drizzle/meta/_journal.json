@@ -22,6 +22,20 @@
       "when": 1763894146963,
       "tag": "0002_mighty_ozymandias",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763976596422,
+      "tag": "0003_violet_liz_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772655404749,
+      "tag": "0004_talented_dorian_gray",
+      "breakpoints": true
     }
   ]
 }

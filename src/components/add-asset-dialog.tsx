@@ -19,13 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { createAsset, createAssetWithPrice } from '@/app/actions'
-import { PlusCircle, TrendingUp, PieChart, Wallet, Loader2 } from 'lucide-react'
+import { createAsset, createAssetWithPrice } from '@/app/actions/assets'
+import { PlusCircle, TrendingUp, PieChart, Wallet, Loader2, Coins } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { StockSearch, type StockSearchResult } from '@/components/stock-search'
 import { StockForm } from '@/components/stock-form'
 
-type AssetMode = 'choose' | 'stock' | 'etf' | 'manual'
+type AssetMode = 'choose' | 'stock' | 'etf' | 'crypto' | 'manual'
 
 export function AddAssetDialog() {
   const [open, setOpen] = useState(false)
@@ -61,6 +61,12 @@ export function AddAssetDialog() {
       formData.set('currency', selectedStock.currency || 'USD')
       formData.set('type', 'investment')
       formData.set('category', mode === 'etf' ? 'etfs' : 'stocks')
+      result = await createAssetWithPrice(formData)
+    } else if (mode === 'crypto') {
+      formData.set('type', 'crypto')
+      formData.set('category', 'crypto_wallet')
+      // Ensure currency is USD for now as CoinGecko logic defaults to USD
+      formData.set('currency', 'USD')
       result = await createAssetWithPrice(formData)
     } else {
       result = await createAsset(formData)
@@ -108,7 +114,7 @@ export function AddAssetDialog() {
                 Choose how you'd like to track your asset.
               </DialogDescription>
             </DialogHeader>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 py-6">
               <button
                 onClick={() => handleSetMode('stock')}
                 className="group flex flex-col items-center justify-center p-6 rounded-xl border hover:border-primary hover:bg-primary/5 transition-all duration-200"
@@ -136,6 +142,19 @@ export function AddAssetDialog() {
               </button>
 
               <button
+                onClick={() => handleSetMode('crypto')}
+                className="group flex flex-col items-center justify-center p-6 rounded-xl border hover:border-primary hover:bg-primary/5 transition-all duration-200"
+              >
+                <div className="h-12 w-12 rounded-full bg-purple-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
+                  <Coins className="h-6 w-6 text-purple-500" />
+                </div>
+                <h3 className="font-semibold text-base mb-1">Crypto</h3>
+                <p className="text-xs text-muted-foreground text-center leading-relaxed px-2">
+                  Track EVM wallet balances automatically
+                </p>
+              </button>
+
+              <button
                 onClick={() => handleSetMode('manual')}
                 className="group flex flex-col items-center justify-center p-6 rounded-xl border hover:border-primary hover:bg-primary/5 transition-all duration-200"
               >
@@ -144,7 +163,7 @@ export function AddAssetDialog() {
                 </div>
                 <h3 className="font-semibold text-base mb-1">Manual</h3>
                 <p className="text-xs text-muted-foreground text-center leading-relaxed px-2">
-                  Cash, Real Estate, Crypto, or custom assets
+                  Cash, Real Estate, or custom assets
                 </p>
               </button>
             </div>
@@ -181,6 +200,67 @@ export function AddAssetDialog() {
           </>
         )}
 
+        {mode === 'crypto' && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Add Crypto Wallet</DialogTitle>
+              <DialogDescription>
+                Enter a name and the EVM public address to track.
+              </DialogDescription>
+            </DialogHeader>
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="crypto-name">Wallet Name</Label>
+                <Input
+                  id="crypto-name"
+                  name="name"
+                  placeholder="e.g., MetaMask Main, Ledger ETH"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="crypto-address">EVM Public Address</Label>
+                <Input
+                  id="crypto-address"
+                  name="walletAddress"
+                  placeholder="0x..."
+                  pattern="^0x[a-fA-F0-9]{40}$"
+                  title="Please enter a valid Ethereum address starting with 0x"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Supports Ethereum Mainnet. Value calculated from CoinGecko API.
+                </p>
+              </div>
+
+              <div className="flex justify-between gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleBackToChoose}
+                >
+                  Back
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleOpenChange(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Add Wallet
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </>
+        )}
+
         {mode === 'manual' && (
           <>
             <DialogHeader>
@@ -212,7 +292,6 @@ export function AddAssetDialog() {
                       <SelectItem value="bank">Bank Account</SelectItem>
                       <SelectItem value="investment">Investment</SelectItem>
                       <SelectItem value="property">Property</SelectItem>
-                      <SelectItem value="crypto">Cryptocurrency</SelectItem>
                       <SelectItem value="vehicle">Vehicle</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>

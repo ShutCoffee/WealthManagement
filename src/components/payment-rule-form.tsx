@@ -124,3 +124,6 @@ export function PaymentRuleForm({ liabilityId, onSuccess }: PaymentRuleFormProps
   );
 }
 
+
+
+

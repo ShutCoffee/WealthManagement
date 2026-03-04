@@ -182,3 +182,6 @@ export function PriceChart({ symbol, currency = 'USD' }: PriceChartProps) {
   );
 }
 
+
+
+

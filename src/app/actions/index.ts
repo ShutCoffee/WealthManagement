@@ -6,4 +6,5 @@ export * from './liabilities'
 export * from './payment-rules'
 export * from './search'
 export * from './historical-prices'
+export * from './waitlist'
 

@@ -50,6 +50,11 @@ function AssetCardComponent({ asset }: AssetCardProps) {
         <div className="text-sm text-muted-foreground">
           {asset.symbol && `${asset.symbol}`}
         </div>
+        {asset.walletAddress && (
+          <div className="text-sm text-muted-foreground mt-1 font-mono text-xs truncate max-w-[200px]" title={asset.walletAddress}>
+            {asset.walletAddress.slice(0, 6)}...{asset.walletAddress.slice(-4)}
+          </div>
+        )}
         {asset.description && (
           <div className="text-sm text-muted-foreground mt-1">
             {asset.description}

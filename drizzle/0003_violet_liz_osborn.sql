@@ -36,10 +36,6 @@ CREATE TABLE "liability_payments" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "liability_payment_rules" ADD CONSTRAINT "liability_payment_rules_liability_id_liabilities_id_fk" FOREIGN KEY ("liability_id") REFERENCES "public"."liabilities"("id") ON DELETE cascade ON UPDATE no action;
---> statement-breakpoint
+ALTER TABLE "assets" ADD COLUMN "wallet_address" varchar(255);--> statement-breakpoint
+ALTER TABLE "liability_payment_rules" ADD CONSTRAINT "liability_payment_rules_liability_id_liabilities_id_fk" FOREIGN KEY ("liability_id") REFERENCES "public"."liabilities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "liability_payments" ADD CONSTRAINT "liability_payments_liability_id_liabilities_id_fk" FOREIGN KEY ("liability_id") REFERENCES "public"."liabilities"("id") ON DELETE cascade ON UPDATE no action;
-
-
-
-
