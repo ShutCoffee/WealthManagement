@@ -10,7 +10,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { getAssetTransactions, calculateAssetProfit, deleteTransaction, getDividendsWithPayouts, calculateDividendMetrics, type DividendWithPayout } from '@/app/actions';
+import { getAssetTransactions, calculateAssetProfit, deleteTransaction, getDividendsWithPayouts, calculateDividendMetrics } from '@/app/actions';
+import type { DividendWithPayout } from '@/lib/calculations/dividends';
 import { AddTransactionDialog } from '@/components/add-transaction-dialog';
 import { DividendsSection } from '@/components/dividends-section';
 import { Trash2, TrendingUp, TrendingDown } from 'lucide-react';

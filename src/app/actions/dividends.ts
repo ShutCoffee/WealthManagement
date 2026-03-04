@@ -132,5 +132,4 @@ export async function getAllDividendMetrics() {
   }
 }
 
-export type { DividendWithPayout }
 

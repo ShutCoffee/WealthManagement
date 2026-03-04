@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { fetchAndStoreDividends, type DividendWithPayout } from '@/app/actions';
+import { fetchAndStoreDividends } from '@/app/actions';
+import type { DividendWithPayout } from '@/lib/calculations/dividends';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2, TrendingUp } from 'lucide-react';
 
